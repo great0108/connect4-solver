@@ -78,6 +78,7 @@ def run_tests(selected_file: str | None = None) -> None:
     passed = 0
     failed = 0
     total_time_ms = 0.0
+    total_nodes = 0
     failures: list[tuple[str, int, int, int]] = []
 
     summary_source = selected_file or str(DATA_DIR)
@@ -96,6 +97,7 @@ def run_tests(selected_file: str | None = None) -> None:
         actual_score = solver.solve(position)
         elapsed_ms = (time.perf_counter_ns() - start_ns) / 1_000_000
         total_time_ms += elapsed_ms
+        total_nodes += solver.getNodeCount()
 
         if actual_score == expected_score:
             passed += 1
@@ -110,9 +112,10 @@ def run_tests(selected_file: str | None = None) -> None:
     print(f"  total positions: {total}")
     print(f"  passed: {passed}")
     print(f"  failed: {failed}")
-    print(f"  total solve time: {total_time_ms:.3f}ms")
     if total > 0:
         print(f"  average solve time: {total_time_ms/total:.3f}ms")
+        print(f"  average nodes searched: {total_nodes/total:.1f}")
+        print(f"  average nodes searched per second: {total_nodes/total_time_ms*1000:.1f}")
 
     if failures:
         print("\nFailed positions:")
@@ -135,4 +138,4 @@ def parse_args() -> str | None:
 
 if __name__ == "__main__":
     # run_tests(parse_args())
-    run_tests("Test_L3_R1.txt")
+    run_tests("Test_L2_R1.txt")
