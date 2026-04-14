@@ -1,3 +1,4 @@
 reference
 .vscode
 __pycache__
+*.pyc

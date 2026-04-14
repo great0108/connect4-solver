@@ -10,14 +10,16 @@ from __future__ import annotations
 class Position:
     WIDTH = 7
     HEIGHT = 6
+    MIN_SCORE = -WIDTH * HEIGHT // 2 + 3
+    MAX_SCORE = (WIDTH * HEIGHT + 1) // 2 - 3
 
     def __init__(self) -> None:
-        self.board = [[0] * Position.HEIGHT for _ in range(Position.WIDTH)]
-        self.height = [0] * Position.WIDTH
+        self.current_position = 0
+        self.mask = 0
         self.moves = 0
 
     def canPlay(self, col: int) -> bool:
-        return 0 <= col < Position.WIDTH and self.height[col] < Position.HEIGHT
+        return 0 <= col < Position.WIDTH and (self.mask & self.top_mask(col)) == 0
 
     def play(self, col: int | str) -> None | int:
         if isinstance(col, str):
@@ -25,8 +27,9 @@ class Position:
 
         if not self.canPlay(col):
             raise ValueError(f"Cannot play column {col}")
-        self.board[col][self.height[col]] = 1 + self.moves % 2
-        self.height[col] += 1
+
+        self.current_position ^= self.mask
+        self.mask |= self.mask + self.bottom_mask(col)
         self.moves += 1
 
     def play_sequence(self, seq: str) -> int:
@@ -43,40 +46,113 @@ class Position:
         if not self.canPlay(col):
             raise ValueError(f"Column {col} is not playable")
 
-        current_player = 1 + self.moves % 2
-
-        if self.height[col] >= 3:
-            if (
-                self.board[col][self.height[col] - 1] == current_player
-                and self.board[col][self.height[col] - 2] == current_player
-                and self.board[col][self.height[col] - 3] == current_player
-            ):
-                return True
-
-        for dy in (-1, 0, 1):
-            nb = 0
-            for dx in (-1, 1):
-                x = col + dx
-                y = self.height[col] + dx * dy
-                while 0 <= x < Position.WIDTH and 0 <= y < Position.HEIGHT and self.board[x][y] == current_player:
-                    nb += 1
-                    x += dx
-                    y += dx * dy
-            if nb >= 3:
-                return True
-
-        return False
+        pos = self.current_position
+        pos |= (self.mask + self.bottom_mask(col)) & self.column_mask(col)
+        return self.alignment(pos)
 
     def nbMoves(self) -> int:
         return self.moves
 
-    def copy(self) -> "Position":
+    def copy(self) -> Position:
         clone = Position()
-        for col in range(Position.WIDTH):
-            clone.board[col] = self.board[col].copy()
-            clone.height[col] = self.height[col]
+        clone.current_position = self.current_position
+        clone.mask = self.mask
         clone.moves = self.moves
         return clone
+
+    def key(self) -> int:
+        return self.current_position + self.mask
+
+    def winning_position(self) -> int:
+        return self.compute_winning_position(self.current_position, self.mask)
+
+    def opponent_winning_position(self) -> int:
+        return self.compute_winning_position(self.current_position ^ self.mask, self.mask)
+
+    def possible(self) -> int:
+        return (self.mask + self.bottom_mask_all()) & self.board_mask()
+
+    def canWinNext(self) -> bool:
+        return bool(self.winning_position() & self.possible())
+
+    def possibleNonLoosingMoves(self) -> int:
+        assert not self.canWinNext()
+        possible_mask = self.possible()
+        opponent_win = self.opponent_winning_position()
+        forced_moves = possible_mask & opponent_win
+        if forced_moves:
+            if forced_moves & (forced_moves - 1):
+                return 0
+            possible_mask = forced_moves
+        return possible_mask & ~(opponent_win >> 1)
+
+    @staticmethod
+    def compute_winning_position(position: int, mask: int) -> int:
+        r = (position << 1) & (position << 2) & (position << 3)
+
+        p = (position << (Position.HEIGHT + 1)) & (position << 2 * (Position.HEIGHT + 1))
+        r |= p & (position << 3 * (Position.HEIGHT + 1))
+        r |= p & (position >> (Position.HEIGHT + 1))
+        p = (position >> (Position.HEIGHT + 1)) & (position >> 2 * (Position.HEIGHT + 1))
+        r |= p & (position << (Position.HEIGHT + 1))
+        r |= p & (position >> 3 * (Position.HEIGHT + 1))
+
+        p = (position << Position.HEIGHT) & (position << 2 * Position.HEIGHT)
+        r |= p & (position << 3 * Position.HEIGHT)
+        r |= p & (position >> Position.HEIGHT)
+        p = (position >> Position.HEIGHT) & (position >> 2 * Position.HEIGHT)
+        r |= p & (position << Position.HEIGHT)
+        r |= p & (position >> 3 * Position.HEIGHT)
+
+        p = (position << (Position.HEIGHT + 2)) & (position << 2 * (Position.HEIGHT + 2))
+        r |= p & (position << 3 * (Position.HEIGHT + 2))
+        r |= p & (position >> (Position.HEIGHT + 2))
+        p = (position >> (Position.HEIGHT + 2)) & (position >> 2 * (Position.HEIGHT + 2))
+        r |= p & (position << (Position.HEIGHT + 2))
+        r |= p & (position >> 3 * (Position.HEIGHT + 2))
+
+        return r & (Position.board_mask() ^ mask)
+
+    @staticmethod
+    def bottom_mask_all() -> int:
+        return sum(1 << (col * (Position.HEIGHT + 1)) for col in range(Position.WIDTH))
+
+    @staticmethod
+    def board_mask() -> int:
+        return Position.bottom_mask_all() * ((1 << Position.HEIGHT) - 1)
+
+    @staticmethod
+    def alignment(pos: int) -> bool:
+        m = pos & (pos >> (Position.HEIGHT + 1))
+        if m & (m >> (2 * (Position.HEIGHT + 1))):
+            return True
+
+        m = pos & (pos >> Position.HEIGHT)
+        if m & (m >> (2 * Position.HEIGHT)):
+            return True
+
+        m = pos & (pos >> (Position.HEIGHT + 2))
+        if m & (m >> (2 * (Position.HEIGHT + 2))):
+
+            return True
+
+        m = pos & (pos >> 1)
+        if m & (m >> 2):
+            return True
+
+        return False
+
+    @staticmethod
+    def top_mask(col: int) -> int:
+        return (1 << (Position.HEIGHT - 1)) << (col * (Position.HEIGHT + 1))
+
+    @staticmethod
+    def bottom_mask(col: int) -> int:
+        return 1 << (col * (Position.HEIGHT + 1))
+
+    @staticmethod
+    def column_mask(col: int) -> int:
+        return ((1 << Position.HEIGHT) - 1) << (col * (Position.HEIGHT + 1))
 
 
 __all__ = ["Position"]
