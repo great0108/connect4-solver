@@ -138,4 +138,4 @@ def parse_args() -> str | None:
 
 if __name__ == "__main__":
     # run_tests(parse_args())
-    run_tests("Test_L2_R2.txt")
+    run_tests("Test_L2_R1.txt")
