@@ -94,7 +94,7 @@ def run_tests(selected_file: str | None = None) -> None:
             continue
 
         start_ns = time.perf_counter_ns()
-        actual_score = solver.solve(position)
+        actual_score, _ = solver.solve(position, True)
         elapsed_ms = (time.perf_counter_ns() - start_ns) / 1_000_000
         total_time_ms += elapsed_ms
         total_nodes += solver.getNodeCount()

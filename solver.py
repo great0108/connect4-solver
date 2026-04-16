@@ -13,18 +13,27 @@ from table import TranspositionTable
 class Solver:
     def __init__(self) -> None:
         self.nodeCount = 0
+        self.root_move = -1
         self.columnOrder = [Position.WIDTH // 2 + (1 - 2 * (i % 2)) * (i + 1) // 2 for i in range(Position.WIDTH)]
         # self.transTable = TranspositionTable(8388593)
         self.transTable = TranspositionTable(838889)
 
     def reset(self) -> None:
         self.nodeCount = 0
+        self.root_move = -1
         self.transTable.reset()
 
-    def solve(self, position: Position) -> int:
+    def solve(self, position: Position, return_move: bool = False) -> int | tuple[int, int]:
         self.nodeCount = 0
+        self.root_move = -1
         if position.canWinNext():
-            return (Position.WIDTH * Position.HEIGHT + 1 - position.nbMoves()) // 2
+            score = (Position.WIDTH * Position.HEIGHT + 1 - position.nbMoves()) // 2
+            if return_move:
+                for col in range(Position.WIDTH):
+                    if position.isWinningMove(col):
+                        return score, col
+
+            return score
 
         minimum = -((Position.WIDTH * Position.HEIGHT - position.nbMoves()) // 2)
         maximum = (Position.WIDTH * Position.HEIGHT + 1 - position.nbMoves()) // 2
@@ -36,18 +45,28 @@ class Solver:
             elif med >= 0 and maximum // 2 > med:
                 med = maximum // 2
 
-            result = self._negamax(position, med, med + 1)
+            result = self._negamax(position, med, med + 1, root=return_move)
             if result <= med:
                 maximum = result
             else:
                 minimum = result
 
+        if return_move:
+            if self.root_move == -1:
+                next_moves = position.possibleNonLoosingMoves()
+                if next_moves == 0:
+                    return -((Position.WIDTH * Position.HEIGHT - position.nbMoves()) // 2), 0
+                print("Warning: root move not found")
+                return minimum, self.solve(position)
+            return minimum, self.root_move
         return minimum
+
+                
 
     def getNodeCount(self) -> int:
         return self.nodeCount
 
-    def _negamax(self, position: Position, alpha: int, beta: int) -> int:
+    def _negamax(self, position: Position, alpha: int, beta: int, root: bool = False) -> int:
         self.nodeCount += 1
         assert not position.canWinNext()
 
@@ -56,6 +75,12 @@ class Solver:
             return -((Position.WIDTH * Position.HEIGHT - position.nbMoves()) // 2)
 
         if position.nbMoves() >= Position.WIDTH * Position.HEIGHT - 2:
+            if root and next_moves != 0:
+                for x in range(Position.WIDTH):
+                    col = self.columnOrder[x]
+                    if next_moves & position.column_mask(col):
+                        self.root_move = col
+                        break
             return 0
 
         minimum = -((Position.WIDTH * Position.HEIGHT - 2 - position.nbMoves()) // 2)
@@ -65,7 +90,12 @@ class Solver:
                 return alpha
 
         max_score = (Position.WIDTH * Position.HEIGHT - 1 - position.nbMoves()) // 2
-        val = self.transTable.get(position.key())
+        if beta > max_score:
+            beta = max_score
+            if alpha >= beta:
+                return beta
+            
+        val = 0 if root else self.transTable.get(position.key())
         if val != 0:
             threshold = Position.MAX_SCORE - Position.MIN_SCORE + 1
             if val > threshold:
@@ -81,11 +111,6 @@ class Solver:
                     if alpha >= beta:
                         return beta
 
-        if beta > max_score:
-            beta = max_score
-            if alpha >= beta:
-                return beta
-
         moves: list[tuple[int, int, int]] = []
         for x in range(Position.WIDTH):
             col = self.columnOrder[x]
@@ -99,14 +124,19 @@ class Solver:
             next_position = position.copy()
             next_position.play(col)
             score = -self._negamax(next_position, -beta, -alpha)
+
             if score >= beta:
+                if root:
+                    self.root_move = col
                 self.transTable.put(
                     position.key(),
                     score + Position.MAX_SCORE - 2 * Position.MIN_SCORE + 2,
                 )
                 return score
-            if score > alpha:
+            if score >= alpha:
                 alpha = score
+                if root:
+                    self.root_move = col
 
         self.transTable.put(position.key(), alpha - Position.MIN_SCORE + 1)
         return alpha
